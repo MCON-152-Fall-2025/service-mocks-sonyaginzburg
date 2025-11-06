@@ -8,7 +8,10 @@ import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 
 import java.net.URI;
 import java.util.List;
-
+// Comments for Homework 4
+// The Recipe Controller class is part of the Controller (in MVC) bc it handles
+// http requests and delegates them to service methods
+//
 @RestController
 @RequestMapping("/api/recipes")
 public class RecipeController {

@@ -1,6 +1,9 @@
 package com.mcon152.recipeshare;
 
 import jakarta.persistence.*;
+// Comments for Homework 4
+// The Recipe class is part of the Model (in MVC) because it represents the data structure
+// of a recipe, and it holds the fields, getters, setters...
 
 @Entity
 @Table(name = "recipes")

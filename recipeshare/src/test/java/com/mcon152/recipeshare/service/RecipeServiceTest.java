@@ -122,8 +122,14 @@ class RecipeServiceTest {
         @DisplayName("propagates repository failure (thenThrow)")
         void propagatesRepositoryFailure() {
             // TODO:
-            // when(recipeRepository.save(any())).thenThrow(new IllegalStateException("DB down"))
-            // assertThrows on recipeService.addRecipe(...)
+            when(recipeRepository.save(any())).thenThrow(new IllegalStateException("DB down"));
+            //assertThrows on recipeService.addRecipe(...)
+            IllegalStateException ex = assertThrows(IllegalStateException.class,
+                    () -> recipeService.addRecipe(newRecipeNoId()));
+
+
+            assertEquals(ex.getMessage(), "DB down");
+
 
         }
     }
@@ -138,8 +144,14 @@ class RecipeServiceTest {
         @DisplayName("returns list from repository")
         void returnsList() {
             // TODO:
-            // when(recipeRepository.findAll()).thenReturn(List.of(...))
+            List<Recipe> mock = List.of(savedRecipe(1L), savedRecipe(2L));
+            when(recipeRepository.findAll()).thenReturn(mock);
+
+            List<Recipe> result = recipeService.getAllRecipes();
             // assert same size/content; verify(findAll)
+            assertEquals(2, result.size());
+            assertEquals(mock,result);
+            verify(recipeRepository).findAll();
 
         }
     }
@@ -154,6 +166,16 @@ class RecipeServiceTest {
         @DisplayName("returns Optional.present when found")
         void present() {
             // TODO: stub findById(1L)->Optional.of(savedRecipe(1L)), assert present
+            Recipe recipe = savedRecipe(1L);
+            when(recipeRepository.findById(1L)).thenReturn(Optional.of(recipe));
+
+            Optional<Recipe> result = recipeService.getRecipeById(1L);
+
+            assertTrue(result.isPresent());
+            assertEquals(1L, result.get().getId());
+            assertEquals("Chocolate Cake", result.get().getTitle());
+
+            verify(recipeRepository).findById(1L);
 
         }
 
@@ -161,6 +183,11 @@ class RecipeServiceTest {
         @DisplayName("returns Optional.empty when missing")
         void empty() {
             // TODO: stub Optional.empty, assert empty
+        when(recipeRepository.findById(1L)).thenReturn(Optional.empty());
+
+        Optional<Recipe> result = recipeService.getRecipeById(1L);
+        assertTrue(result.isEmpty());
+        verify(recipeRepository).findById(1L);
 
         }
     }
@@ -175,8 +202,14 @@ class RecipeServiceTest {
         @DisplayName("returns true when entity existed")
         void returnsTrue_whenExists() {
             // TODO:
-            // when(recipeRepository.existsById(id)).thenReturn(true)
-            // doNothing().when(recipeRepository).deleteById(id)
+            long id = 1L;
+            when(recipeRepository.existsById(id)).thenReturn(true);
+            doNothing().when(recipeRepository).deleteById(id);
+            boolean result = recipeService.deleteRecipe(id);
+            assertTrue(result);
+            verify(recipeRepository).existsById(id);
+            verify(recipeRepository).deleteById(id);
+
             // assert true; verify order: existsById -> deleteById
 
         }
@@ -185,13 +218,22 @@ class RecipeServiceTest {
         @DisplayName("returns false when missing (never deletes)")
         void returnsFalse_whenMissing() {
             // TODO: existsById -> false; assert false; verify deleteById never called
-
+            long id = 1L;
+            when(recipeRepository.existsById(id)).thenReturn(false);
+            boolean result = recipeService.deleteRecipe(id);
+            assertFalse(result);
+            verify(recipeRepository).existsById(id);
+            verify(recipeRepository, never()).deleteById(id);
         }
 
         @Test
         @DisplayName("propagates delete error (doThrow)")
         void propagatesDeleteError() {
             // TODO: existsById -> true; doThrow(...) on deleteById; assertThrows
+        long id  = 1L;
+        when(recipeRepository.existsById(id)).thenReturn(true);
+        doThrow(new IllegalStateException("DB down")).when(recipeRepository).deleteById(id);
+        assertThrows(IllegalStateException.class, () -> recipeService.deleteRecipe(id));
 
         }
     }
@@ -210,13 +252,71 @@ class RecipeServiceTest {
             // save(...) -> updatedSaved
             // assert Optional.present & fields updated
             // capture arg and assert values
-         }
+                long id = 1L;
+
+                // existing entity in "DB"
+                Recipe existing = new Recipe(
+                        id,
+                        "Chocolate Cake",
+                        "Moist chocolate cake",
+                        "flour, eggs, cocoa",
+                        "mix, bake",
+                        8
+                );
+
+                // updated data from client (id is null, should not overwrite existing ID)
+                Recipe updated = new Recipe(
+                        null,
+                        "Vanilla Cake",
+                        "Delicious Vanilla cake",
+                        "flour, eggs, sugar",
+                        "mix and bake",
+                        6
+                );
+
+                // stub findById to return existing
+                when(recipeRepository.findById(id)).thenReturn(Optional.of(existing));
+
+                // stub save to return the entity passed (echo)
+                when(recipeRepository.save(any(Recipe.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+                // call service
+                Optional<Recipe> result = recipeService.updateRecipe(id, updated);
+
+                // result must be present
+                assertTrue(result.isPresent());
+
+                // capture the entity passed to save
+                verify(recipeRepository).save(recipeCaptor.capture());
+                Recipe saved = recipeCaptor.getValue();
+
+                // assert that all fields are updated correctly
+                assertEquals(id, saved.getId()); // ID preserved
+                assertEquals("Vanilla Cake", saved.getTitle());
+                assertEquals("Delicious Vanilla cake", saved.getDescription());
+                assertEquals("flour, eggs, sugar", saved.getIngredients());
+                assertEquals("mix and bake", saved.getInstructions());
+
+                // the returned object is the same as the saved one
+                assertEquals(saved, result.get());
+
+                // verify repository interactions
+                verify(recipeRepository).findById(id);
+            }
+
+
 
         @Test
         @DisplayName("returns empty when entity missing")
         void returnsEmpty_whenMissing() {
             // TODO: findById -> empty; assert Optional.empty; verify save never called
+        long id = 1l;
+        when(recipeRepository.findById(id)).thenReturn(Optional.empty());
+        Optional<Recipe> result = recipeService.updateRecipe(id, new Recipe());
 
+        assertTrue(result.isEmpty());
+        verify(recipeRepository).findById(id);
+        verify(recipeRepository, never()).save(any());
         }
     }
 
@@ -234,13 +334,56 @@ class RecipeServiceTest {
             // provide partial with only title set
             // repository.save returns the modified entity (use thenAnswer echo)
             // verify save(argThat(...)) to ensure unchanged fields remain as-is
+
+                long id = 1L;
+
+                // existing entity in DB
+                Recipe existing = new Recipe(
+                        id,
+                        "Old Title",
+                        "Old Desc",
+                        "Old Ingredients",
+                        "Old Instructions",
+                        4
+                );
+
+                // partial update: ONLY title changed
+                Recipe partial = new Recipe();
+                partial.setTitle("New Title");
+
+                // findById -> present(existing)
+                when(recipeRepository.findById(id)).thenReturn(Optional.of(existing));
+
+                // repository.save returns the modified entity (echo)
+                when(recipeRepository.save(any(Recipe.class)))
+                        .thenAnswer(inv -> inv.getArgument(0));
+
+                // call service
+                Optional<Recipe> result = recipeService.patchRecipe(id, partial);
+                assertTrue(result.isPresent());
+
+                // verify save(argThat(...))
+                verify(recipeRepository).save(argThat(saved ->
+                        saved.getId().equals(id)
+                                && saved.getTitle().equals("New Title")
+                                && saved.getDescription().equals("Old Desc")
+                                && saved.getIngredients().equals("Old Ingredients")
+                                && saved.getInstructions().equals("Old Instructions")
+                                && saved.getServings() == 4
+                ));
+
         }
 
         @Test
         @DisplayName("returns empty when entity missing")
         void returnsEmpty_whenMissing() {
             // TODO: findById -> empty; assert Optional.empty; verify save never called
-
+            long id = 1L;
+            when(recipeRepository.findById(id)).thenReturn(Optional.empty());
+            Optional<Recipe> result = recipeService.patchRecipe(id, new Recipe());
+            assertTrue(result.isEmpty());
+            verify(recipeRepository, never()).save(any());
+            verify(recipeRepository).findById(id);
          }
     }
 
@@ -254,7 +397,13 @@ class RecipeServiceTest {
         @DisplayName("consecutive stubs on existsById (true, false)")
         void consecutiveStubs_existsById() {
             // TODO: when(existsById(1L)).thenReturn(true, false); verify two calls and no more
-
+            when(recipeRepository.existsById(1L)).thenReturn(true).thenReturn(false);
+            boolean first = recipeRepository.existsById(1L);
+            boolean second = recipeRepository.existsById(1L);
+            assertTrue(first);
+            assertFalse(second);
+            verify(recipeRepository, times(2)).existsById(1L);
+            verifyNoMoreInteractions(recipeRepository);
          }
     }
 }
